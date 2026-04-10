@@ -1,6 +1,6 @@
 /*
  * Version: 0.1.5
- * Description: Main entry point. Updated to use the library crate structure.
+ * Description: Main entry point. Updated to use the modules via the library crate.
  */
 
 use anyhow::{Context, Result};
@@ -8,7 +8,7 @@ use clap::Parser;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-// Use the library crate
+// Use the library crate members
 use appointment_agent::config::Config;
 use appointment_agent::client_pool::ClientPool;
 use appointment_agent::agent::Agent;
