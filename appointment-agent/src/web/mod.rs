@@ -4,6 +4,8 @@
  * Strictly adheres to REQUIREMENT.md v2.0 Section 2.7 (Logging Contract) and API specifications.
  */
 
+use axum::extract::ws::Utf8Bytes;
+
 use axum::{
     extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::IntoResponse,
@@ -111,8 +113,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             Err(_) => continue,
         };
 
+        // axum 0.7.x uses Utf8Bytes or similar for Text messages
         if socket.send(Message::Text(payload.into())).await.is_err() {
-            // Client disconnected
             break;
         }
     }
