@@ -1,8 +1,6 @@
 /*
  * Version: 0.1.2
- * Description: Configuration structures using the serde_yml fork.
  */
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
