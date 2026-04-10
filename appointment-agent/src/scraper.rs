@@ -1,242 +1,151 @@
-use anyhow::{Result, anyhow};
-use chrono::{Datelike, Local, NaiveDate};
-use scraper::{Html, Selector};
-use tracing::{debug, error, info, warn};
-use wreq::Client;
+/*
+ * Version: 0.1.1
+ * Description: Logic for constructing availability URLs and parsing LibCal HTML responses.
+ * Strictly adheres to REQUIREMENT.md v2.0 Section 2.2 (URL Construction) and 2.3 (Parsing Rules).
+ */
 
-use crate::config::{Config, Museum, Site};
+use anyhow::{Context, Result};
+use chrono::NaiveDate;
+use scraper::{Html, Selector};
+use url::Url;
+use crate::config::SiteConfig;
 
 #[derive(Debug, Clone)]
-pub struct AvailabilitySlot {
-    pub date: String,
+pub struct Availability {
+    pub date: NaiveDate,
     pub booking_url: String,
+    pub day_text: String,
 }
 
-pub struct Scraper {
-    client: Client,
-}
+pub struct Scraper;
 
 impl Scraper {
-    pub fn new(client: Client) -> Self {
-        Self { client }
-    }
-
-    /// Construct availability URL according to the specification
-    pub fn construct_availability_url(
-        site: &Site,
-        museum: &Museum,
+    /// Constructs the availability URL based on Requirement 2.2.
+    /// Format: {baseurl}{availabilityendpoint}?museum={museumid}&date={YYYY-MM-DD}&digital={digital}&physical={physical}&location={location}
+    pub fn build_availability_url(
+        site: &SiteConfig,
+        museum_id: &str,
         date: NaiveDate,
-    ) -> String {
-        format!(
-            "{}{}?museum={}&date={}&digital={}&physical={}&location={}",
-            site.baseurl,
-            site.availabilityendpoint,
-            museum.museumid,
-            date.format("%Y-%m-%d"),
-            site.digital,
-            site.physical,
-            site.location
-        )
+    ) -> Result<String> {
+        let base = Url::parse(&site.baseurl)
+            .with_context(|| format!("Invalid base URL: {}", site.baseurl))?;
+        
+        let mut url = base.join(&site.availabilityendpoint)
+            .with_context(|| format!("Invalid endpoint: {}", site.availabilityendpoint))?;
+
+        url.query_pairs_mut()
+            .append_pair("museum", museum_id)
+            .append_pair("date", &date.format("%Y-%m-%d").to_string())
+            .append_pair("digital", &site.digital.to_string())
+            .append_pair("physical", &site.physical.to_string())
+            .append_pair("location", &site.location);
+
+        Ok(url.to_string())
     }
 
-    /// Fetch and parse availability for a given month
-    pub async fn fetch_availability(
-        &self,
-        site: &Site,
-        museum: &Museum,
-        date: NaiveDate,
-    ) -> Result<Vec<AvailabilitySlot>> {
-        let url = Self::construct_availability_url(site, museum, date);
-        
-        info!(url = %url, month = %date.format("%Y-%m"), "Fetching availability");
-
-        let response = self.client.get(&url).send().await?;
-        let html = response.text().await?;
-        
-        self.parse_availability(&html, site, date)
-    }
-
-    /// Parse HTML to extract available slots
+    /// Parses the HTML response to find available booking slots.
+    /// Requirement 2.3: Use CSS selector bookinglinkselector.
     pub fn parse_availability(
-        &self,
-        html: &str,
-        site: &Site,
-        base_date: NaiveDate,
-    ) -> Result<Vec<AvailabilitySlot>> {
-        let document = Html::parse_document(html);
-        
+        html_content: &str,
+        site: &SiteConfig,
+    ) -> Result<Vec<Availability>> {
+        let document = Html::parse_document(html_content);
         let selector = Selector::parse(&site.bookinglinkselector)
-            .map_err(|e| anyhow!("Invalid selector '{}': {}", site.bookinglinkselector, e))?;
+            .map_err(|_| anyhow::anyhow!("Invalid CSS selector: {}", site.bookinglinkselector))?;
 
-        let mut slots = Vec::new();
+        let mut results = Vec::new();
+        let base_url = Url::parse(&site.baseurl)?;
 
         for element in document.select(&selector) {
-            if let Some(href) = element.value().attr("href") {
-                let day_text = element.text().collect::<String>().trim().to_string();
-                
-                // Extract full date from href query parameter or construct from day number
-                let full_date = if let Some(parsed) = url::Url::parse(href).ok().and_then(|u| {
-                    u.query_pairs().find(|(k, _)| k == "date").map(|(_, v)| v.to_string())
-                }) {
-                    parsed
-                } else {
-                    // Construct date from day number and base month/year
-                    if let Ok(day) = day_text.parse::<u32>() {
-                        NaiveDate::from_ymd_opt(base_date.year(), base_date.month(), day)
-                            .map(|d| d.format("%Y-%m-%d").to_string())
-                            .unwrap_or_else(|| format!("{}-{:02}-{}", base_date.year(), base_date.month(), day))
-                    } else {
-                        continue;
-                    }
-                };
+            // Requirement 2.3: Extract href -> booking_url
+            let href = match element.value().attr("href") {
+                Some(h) => h,
+                None => continue,
+            };
 
-                // Resolve relative URLs
-                let booking_url = if href.starts_with("http") {
-                    href.to_string()
-                } else {
-                    format!("{}{}", site.baseurl, href)
-                };
+            // Requirement 2.2: Resolve relative booking URLs
+            let booking_url = base_url.join(href)?.to_string();
 
-                info!(date = %full_date, booking_url = %booking_url, "Availability found");
-                slots.push(AvailabilitySlot {
-                    date: full_date,
-                    booking_url,
-                });
-            }
-        }
+            // Requirement 2.3: Extract inner text -> date (day number)
+            let inner_text = element.text().collect::<String>().trim().to_string();
 
-        if slots.is_empty() {
-            debug!("No availability found for {}", base_date.format("%Y-%m"));
-        }
+            // Requirement 2.4.2: Extract full date from the booking URL query parameter 'date'
+            let parsed_url = Url::parse(&booking_url)?;
+            let date_str = parsed_url.query_pairs()
+                .find(|(key, _)| key == "date")
+                .map(|(_, value)| value.to_string());
 
-        Ok(slots)
-    }
-
-    /// Detect login form in HTML response
-    pub fn detect_login_form(&self, html: &str) -> Option<LoginFormFields> {
-        let document = Html::parse_document(html);
-        
-        // Look for form with action containing "form_login"
-        let form_selector = Selector::parse("form[action*='form_login']").ok()?;
-        let form = document.select(&form_selector).next()?;
-
-        let mut auth_id = None;
-        let mut login_url = None;
-        let mut action_url = None;
-
-        // Extract form action
-        if let Some(action) = form.value().attr("action") {
-            action_url = Some(action.to_string());
-        }
-
-        // Extract hidden inputs
-        let input_selector = Selector::parse("input[type='hidden']").ok()?;
-        for input in form.select(&input_selector) {
-            let name = input.value().attr("name")?;
-            let value = input.value().attr("value")?;
-            
-            match name {
-                "auth_id" => auth_id = Some(value.to_string()),
-                "login_url" => login_url = Some(value.to_string()),
-                _ => {}
-            }
-        }
-
-        if auth_id.is_some() && login_url.is_some() {
-            info!("Login form detected");
-            Some(LoginFormFields {
-                auth_id: auth_id?,
-                login_url: login_url?,
-                action_url: action_url?,
-            })
-        } else {
-            None
-        }
-    }
-
-    /// Detect booking form in HTML response
-    pub fn detect_booking_form(&self, html: &str) -> Option<BookingFormFields> {
-        let document = Html::parse_document(html);
-        
-        // Look for form#s-lc-bform
-        let form_selector = Selector::parse("form#s-lc-bform").ok()?;
-        let form = document.select(&form_selector).next()?;
-
-        let mut hidden_fields = Vec::new();
-        let mut action_url = None;
-        let mut email_field_name = None;
-
-        // Extract form action
-        if let Some(action) = form.value().attr("action") {
-            action_url = Some(action.to_string());
-        }
-
-        // Extract all inputs
-        let input_selector = Selector::parse("input").ok()?;
-        for input in form.select(&input_selector) {
-            let input_type = input.value().attr("type").unwrap_or("text");
-            let name = input.value().attr("name")?;
-            
-            if input_type == "hidden" {
-                if let Some(value) = input.value().attr("value") {
-                    hidden_fields.push((name.to_string(), value.to_string()));
-                }
-            } else if input_type == "email" {
-                email_field_name = Some(name.to_string());
-            }
-        }
-
-        Some(BookingFormFields {
-            action_url: action_url?,
-            hidden_fields,
-            email_field_name,
-        })
-    }
-
-    /// Check if response contains success indicator
-    pub fn check_success(&self, html: &str, indicator: &str) -> bool {
-        html.contains(indicator)
-    }
-
-    /// Relaxed parsing when primary selector fails
-    pub fn parse_availability_relaxed(&self, html: &str, site: &Site) -> Result<Vec<AvailabilitySlot>> {
-        warn!("Using relaxed selector for availability parsing");
-        let document = Html::parse_document(html);
-        
-        // Try generic 'a' selector as fallback
-        let selector = Selector::parse("a").map_err(|e| anyhow!("Invalid relaxed selector: {}", e))?;
-        
-        let mut slots = Vec::new();
-        for element in document.select(&selector) {
-            if let Some(href) = element.value().attr("href") {
-                if href.contains("/passes/") && href.contains("/book") {
-                    let day_text = element.text().collect::<String>();
-                    slots.push(AvailabilitySlot {
-                        date: day_text.trim().to_string(),
-                        booking_url: if href.starts_with("http") {
-                            href.to_string()
-                        } else {
-                            format!("{}{}", site.baseurl, href)
-                        },
+            if let Some(ds) = date_str {
+                if let Ok(parsed_date) = NaiveDate::parse_from_str(&ds, "%Y-%m-%d") {
+                    results.push(Availability {
+                        date: parsed_date,
+                        booking_url,
+                        day_text: inner_text,
                     });
                 }
             }
         }
 
-        Ok(slots)
+        Ok(results)
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LoginFormFields {
-    pub auth_id: String,
-    pub login_url: String,
-    pub action_url: String,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{SiteConfig, LoginFormConfig, BookingFormConfig};
+    use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
-pub struct BookingFormFields {
-    pub action_url: String,
-    pub hidden_fields: Vec<(String, String)>,
-    pub email_field_name: Option<String>,
+    fn mock_site() -> SiteConfig {
+        SiteConfig {
+            name: "Test Library".into(),
+            baseurl: "https://test.libcal.com".into(),
+            availabilityendpoint: "/pass/availability".into(),
+            digital: true,
+            physical: false,
+            location: "0".into(),
+            bookinglinkselector: "a.s-lc-pass-available".into(),
+            successindicator: "Thank you!".into(),
+            loginform: LoginFormConfig {
+                usernamefield: "u".into(),
+                passwordfield: "p".into(),
+                submitbutton: "s".into(),
+                csrfselector: "".into(),
+                authidselector: "input[name='auth_id']".into(),
+                loginurlselector: "input[name='login_url']".into(),
+            },
+            bookingform: BookingFormConfig {
+                actionurl: "".into(),
+                emailfield: "email".into(),
+            },
+            museums: HashMap::new(),
+            preferredslug: "sam".into(),
+        }
+    }
+
+    #[test]
+    fn test_url_construction() {
+        let site = mock_site();
+        let date = NaiveDate::from_ymd_opt(2026, 4, 15).unwrap();
+        let url = Scraper::build_availability_url(&site, "7f2ac5c414b2", date).unwrap();
+        
+        assert!(url.contains("date=2026-04-15"));
+        assert!(url.contains("museum=7f2ac5c414b2"));
+        assert!(url.contains("digital=true"));
+    }
+
+    #[test]
+    fn test_parsing() {
+        let site = mock_site();
+        let html = r#"
+            <div class="day day-2026-04-15">
+                <a href="/passes/SAM/book?date=2026-04-15&pass=abc" class="s-lc-pass-available">15</a>
+            </div>
+        "#;
+        
+        let results = Scraper::parse_availability(html, &site).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].date.to_string(), "2026-04-15");
+        assert_eq!(results[0].booking_url, "https://test.libcal.com/passes/SAM/book?date=2026-04-15&pass=abc");
+    }
 }
