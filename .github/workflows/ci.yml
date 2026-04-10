@@ -1,22 +1,21 @@
 name: Rust CI & Docker Build
 
 on:
-#  push:
-#    branches: [ "main" ]
-  workflow_dispatch: 
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # Define the working directory as an environment variable
   WORKING_DIR: appointment-agent
 
 jobs:
   test:
     name: Test and Audit
     runs-on: ubuntu-latest
-    # Set the default working directory for all 'run' steps in this job
     defaults:
       run:
         working-directory: ${{ env.WORKING_DIR }}
@@ -32,13 +31,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.85.0
+          # Changed from 1.85.0 to stable to support modern transitive dependencies 
+          # required by Axum 0.8 and Wreq 6-rc.
+          toolchain: stable
           components: clippy, rustfmt
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          # Tell the cache to look inside the subdirectory for Cargo.toml
           workspaces: ${{ env.WORKING_DIR }} -> target
 
       - name: Run Tests
@@ -86,7 +86,6 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          # Point context to the subdirectory where the Dockerfile and code live
           context: ${{ env.WORKING_DIR }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
