@@ -1,7 +1,6 @@
 /*
- * Version: 0.1.4
- * Description: The main orchestration engine for the Appointment Agent.
- * Cleanup: Removed unused NaiveDate import.
+ * Version: 0.1.5
+ * Description: Orchestration engine. Fixed field naming typo.
  */
 
 use anyhow::{anyhow, Result};
@@ -95,7 +94,9 @@ impl Agent {
         let mut check_count = 0;
         let mut seen_dates = HashSet::new();
         let site = self.config.get_active_site().ok_or_else(|| anyhow!("Active site not found"))?;
-        let museum = site.museums.get(&site.preferred_slug).ok_or_else(|| anyhow!("Museum not found"))?;
+        
+        // Fixed: Use preferredslug instead of preferred_slug
+        let museum = site.museums.get(&site.preferredslug).ok_or_else(|| anyhow!("Museum not found"))?;
         let semaphore = Arc::new(Semaphore::new(3)); 
 
         while Local::now() < deadline {
