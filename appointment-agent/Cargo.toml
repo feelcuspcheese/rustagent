@@ -1,0 +1,38 @@
+[package]
+name = "appointment-agent"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.50", features = ["full", "tracing", "signal"] }
+wreq = "6.0.0-rc.26"
+wreq-util = "3.0.0-rc.1"
+boring-sys = "4.15.0"
+scraper = "0.21"
+axum = "0.8"
+tokio-tungstenite = "0.28"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+rust-embed = "8.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_yml = "0.3"
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+dashmap = "6.1"
+uuid = { version = "1.12", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "2.0"
+rand = "0.8"
+url = "2.5"
+clap = { version = "4.5", features = ["derive"] }
+humantime = "2.1"
+
+[dev-dependencies]
+wiremock = "0.6"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3

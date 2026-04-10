@@ -1,0 +1,75 @@
+active_site: spl
+mode: alert
+preferred_days: ["Saturday", "Sunday"]
+strike_time: "09:00"
+check_window: 60s
+check_interval: 2s
+pre_warm_offset: 30s
+request_jitter: 2s
+months_to_check: 2
+rest_cycle_checks: 20
+rest_cycle_duration: 3s
+ntfy_topic: myappointments
+
+credentials:
+  my_card:
+    name: "My Library Card"
+    username: "123456"
+    password: "PIN"
+    email: "me@example.com"
+    site: spl
+
+selected_credential: my_card
+
+sites:
+  spl:
+    name: "Seattle Public Library"
+    baseurl: "https://spl.libcal.com"
+    availabilityendpoint: "/pass/availability/institution"
+    digital: true
+    physical: false
+    location: "0"
+    bookinglinkselector: "a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available"
+    successindicator: "Thank you!"
+    loginform:
+      usernamefield: "username"
+      passwordfield: "password"
+      submitbutton: "submit"
+      csrfselector: ""
+      authidselector: "input[name='auth_id']"
+      loginurlselector: "input[name='login_url']"
+    bookingform:
+      actionurl: ""
+      emailfield: "email"
+    museums:
+      sam:
+        name: "Seattle Art Museum"
+        slug: "SAM"
+        museumid: "7f2ac5c414b2"
+    preferredslug: "sam"
+
+  kcls:
+    name: "King County Library System"
+    baseurl: "https://rooms.kcls.org"
+    availabilityendpoint: "/pass/availability/institution"
+    digital: true
+    physical: false
+    location: "0"
+    bookinglinkselector: "a.s-lc-pass-availability.s-lc-pass-digital.s-lc-pass-available"
+    successindicator: "Thank you!"
+    loginform:
+      usernamefield: "username"
+      passwordfield: "password"
+      submitbutton: "submit"
+      csrfselector: ""
+      authidselector: "input[name='auth_id']"
+      loginurlselector: "input[name='login_url']"
+    bookingform:
+      actionurl: ""
+      emailfield: "email"
+    museums:
+      kidsquest:
+        name: "KidsQuest Children's Museum"
+        slug: "kidsquest"
+        museumid: "9ec25160a8a0"
+    preferredslug: "kidsquest"
