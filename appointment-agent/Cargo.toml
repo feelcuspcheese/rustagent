@@ -1,6 +1,6 @@
 [package]
 name = "appointment-agent"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 
 [dependencies]
@@ -8,7 +8,6 @@ edition = "2021"
 tokio = { version = "1.43", features = ["full", "tracing", "signal"] }
 
 # Networking & Stealth
-# Downgraded to rc.25 to avoid typed-builder 0.20.0 build errors
 wreq = "6.0.0-rc.25"
 wreq-util = "3.0.0-rc.1"
 
@@ -24,12 +23,18 @@ rust-embed = "8.5"
 
 # Data & Serialization
 serde = { version = "1.0", features = ["derive"] }
-# serde_yml 0.0.12 is the current stable release for this fork
 serde_yml = "0.0.12"
 serde_json = "1.0"
 dashmap = "6.1"
 uuid = { version = "1.13", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+
+# Transitive Dependency Pins (Fixes Rust 1.86/1.87 conflicts)
+# Research indicates icu4x 2.1 is the last version compatible with older MSRV.
+icu_collections = "=2.1.0"
+icu_locid = "=1.5.0"
+icu_properties = "=1.5.1"
+icu_normalizer = "=1.5.0"
 
 # Utilities
 anyhow = "1.0"
