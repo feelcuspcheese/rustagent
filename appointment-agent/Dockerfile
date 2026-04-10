@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=planner /app/recipe.json recipe.json
 RUN rustup target add x86_64-unknown-linux-musl
 
-# Build dependencies
+# Build dependencies (cached layer)
 RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
 
 # Build application
