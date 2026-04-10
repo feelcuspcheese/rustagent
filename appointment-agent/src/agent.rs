@@ -1,6 +1,6 @@
 /*
  * Version: 0.1.5
- * Description: Orchestration engine. Fixed field naming typo.
+ * Description: The main orchestration engine. Fixed preferredslug field name mismatch.
  */
 
 use anyhow::{anyhow, Result};
@@ -72,9 +72,9 @@ impl Agent {
         let _ = client.get(&site.baseurl).send().await; 
         info!("{}", json!({"event": "pre_warm_complete"}));
 
-        let time_to_strike = strike_dt.signed_duration_since(Local::now());
-        if time_to_strike.num_milliseconds() > 10 {
-            sleep(time_to_strike.to_std()? - Duration::from_millis(10)).await;
+        let mut time_until_strike = strike_dt.signed_duration_since(Local::now());
+        if time_until_strike.num_milliseconds() > 10 {
+            sleep(time_until_strike.to_std()? - Duration::from_millis(10)).await;
         }
 
         while Local::now() < strike_dt {
