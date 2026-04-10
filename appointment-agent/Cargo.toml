@@ -8,6 +8,7 @@ edition = "2021"
 tokio = { version = "1.43", features = ["full", "tracing", "signal"] }
 
 # Networking & Stealth
+# Using rc.25 to avoid typed-builder macro bugs found in rc.26
 wreq = "6.0.0-rc.25"
 wreq-util = "3.0.0-rc.1"
 
@@ -29,8 +30,8 @@ dashmap = "6.1"
 uuid = { version = "1.13", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
-# Transitive Dependency Pins (Fixes Rust 1.86/1.87 conflicts)
-# Research indicates icu4x 2.1 is the last version compatible with older MSRV.
+# Transitive Dependency Pins (Fixes Rust 1.86+ MSRV conflicts)
+# Forcing icu crates to 2.1.x to prevent version 2.2.0 from requiring Rust 1.86
 icu_collections = "=2.1.0"
 icu_locid = "=1.5.0"
 icu_properties = "=1.5.1"
