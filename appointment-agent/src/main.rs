@@ -1,7 +1,6 @@
 /*
- * Version: 0.1.4
- * Description: Main entry point for the Appointment Agent.
- * Cleanup: Removed unused imports.
+ * Version: 0.1.5
+ * Description: Main entry point. Updated to use the library crate structure.
  */
 
 use anyhow::{Context, Result};
@@ -9,16 +8,11 @@ use clap::Parser;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-mod config;
-mod client_pool;
-mod scraper;
-mod booker;
-mod agent;
-mod web;
-
-use crate::config::Config;
-use crate::client_pool::ClientPool;
-use crate::agent::Agent;
+// Use the library crate
+use appointment_agent::config::Config;
+use appointment_agent::client_pool::ClientPool;
+use appointment_agent::agent::Agent;
+use appointment_agent::web;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Rust Appointment Agent for LibCal systems")]
