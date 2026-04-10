@@ -30,7 +30,7 @@ pub struct LoginFormConfig {
     pub usernamefield: String,
     pub passwordfield: String,
     pub submitbutton: String,
-    #[serde(default)]
+    #[(default)]
     pub csrfselector: String,
     pub authidselector: String,
     pub loginurlselector: String,
@@ -38,7 +38,7 @@ pub struct LoginFormConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BookingFormConfig {
-    #[serde(default)]
+    #[(default)]
     pub actionurl: String,
     pub emailfield: String,
 }
@@ -103,13 +103,13 @@ impl Config {
     /// Loads configuration from a YAML file.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        let config: Config = serde_yml::from_str(&content)?;
+        let config: Config = serde_yaml::from_str(&content)?;
         Ok(config)
     }
 
     /// Saves configuration to a YAML file.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = serde_yml::to_string(self)?;
+        let content = serde_yaml::to_string(self)?;
         fs::write(path, content)?;
         Ok(())
     }
