@@ -16,7 +16,7 @@ wreq-util = "3.0.0-rc.1"
 scraper = "0.22"
 
 # Web Dashboard & API
-# Added "ws" feature for WebSocket support
+# Added "ws" feature for WebSocket support as required by Requirement 2.7
 axum = { version = "0.8", features = ["ws"] }
 tokio-tungstenite = "0.26"
 tower = "0.5"
