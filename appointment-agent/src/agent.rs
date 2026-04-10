@@ -1,17 +1,17 @@
 /*
- * Version: 0.1.1
+ * Version: 0.1.4
  * Description: The main orchestration engine for the Appointment Agent.
- * Strictly adheres to REQUIREMENT.md v2.0 Section 2.4 (Execution Flow) and 2.7 (Logging Contract).
+ * Cleanup: Removed unused imports.
  */
 
 use anyhow::{anyhow, Result};
-use chrono::{Duration as ChronoDuration, Local, NaiveDate, NaiveTime};
+use chrono::{Duration as ChronoDuration, Local, NaiveTime};
 use rand::Rng;
 use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tokio::time::{sleep, Duration, Instant};
+use tokio::time::{sleep, Duration};
 use tracing::info;
 
 use crate::booker::Booker;
@@ -34,7 +34,6 @@ impl Agent {
         }
     }
 
-    /// Entry point for the agent execution.
     pub async fn run(&self) -> Result<()> {
         let strike_time = NaiveTime::parse_from_str(&self.config.strike_time, "%H:%M")
             .map_err(|_| anyhow!("Invalid strike_time format in config"))?;
@@ -46,49 +45,39 @@ impl Agent {
             "mode": format!("{:?}", self.config.mode).to_lowercase()
         }));
 
-        // 2.4.1 Precision Wait & Pre-warm
         self.wait_for_strike(strike_time).await?;
-
-        // 2.4.2 Check Window Loop
         self.execution_loop(strike_time).await?;
 
         info!("{}", json!({"event": "agent_finished", "run_id": self.run_id}));
         Ok(())
     }
 
-    /// Implements Section 2.4.1: Precision Wait & Pre-warming.
     async fn wait_for_strike(&self, strike_time: NaiveTime) -> Result<()> {
         let now = Local::now();
         let mut strike_dt = now.date_naive().and_time(strike_time).and_local_timezone(Local).unwrap();
 
-        // If strike time already passed today, assume it's for tomorrow
         if strike_dt < now {
             strike_dt = strike_dt + ChronoDuration::days(1);
         }
 
         let pre_warm_at = strike_dt - ChronoDuration::from_std(self.config.pre_warm_offset)?;
         
-        // Wait for pre-warm phase
         let time_until_prewarm = pre_warm_at.signed_duration_since(Local::now());
         if time_until_prewarm.num_milliseconds() > 0 {
             sleep(time_until_prewarm.to_std()?).await;
         }
 
-        // Pre-warm phase (Requirement 2.4.1)
         info!("{}", json!({"event": "pre_warm_start"}));
         let client = self.client_pool.next();
         let site = self.config.get_active_site().ok_or_else(|| anyhow!("Active site not found"))?;
-        let _ = client.get(&site.baseurl).send().await; // Establish TLS/Session
+        let _ = client.get(&site.baseurl).send().await; 
         info!("{}", json!({"event": "pre_warm_complete"}));
 
-        // Precision wait until strike_dt
-        let mut time_until_strike = strike_dt.signed_duration_since(Local::now());
-        if time_until_strike.num_milliseconds() > 10 {
-            // Standard sleep for the bulk of the time
-            sleep(time_until_strike.to_std()? - Duration::from_millis(10)).await;
+        let strike_dt_std = strike_dt.signed_duration_since(Local::now()).to_std().unwrap_or(Duration::from_secs(0));
+        if strike_dt_std > Duration::from_millis(10) {
+            sleep(strike_dt_std - Duration::from_millis(10)).await;
         }
 
-        // Final 10ms spin-loop for sub-millisecond precision
         while Local::now() < strike_dt {
             std::hint::spin_loop();
         }
@@ -96,7 +85,6 @@ impl Agent {
         Ok(())
     }
 
-    /// Implements Section 2.4.2: Main execution loop within the check window.
     async fn execution_loop(&self, strike_time: NaiveTime) -> Result<()> {
         let now = Local::now();
         let strike_dt = now.date_naive().and_time(strike_time).and_local_timezone(Local).unwrap();
@@ -108,14 +96,12 @@ impl Agent {
         let mut seen_dates = HashSet::new();
         let site = self.config.get_active_site().ok_or_else(|| anyhow!("Active site not found"))?;
         let museum = site.museums.get(&site.preferred_slug).ok_or_else(|| anyhow!("Museum not found"))?;
-        let semaphore = Arc::new(Semaphore::new(3)); // Requirement 2.4.2
+        let semaphore = Arc::new(Semaphore::new(3)); 
 
         while Local::now() < deadline {
-            // Apply jitter (Requirement 2.4.2)
             let jitter_ms = rand::thread_rng().gen_range(0..self.config.request_jitter.as_millis() as u64);
             sleep(Duration::from_millis(jitter_ms)).await;
 
-            // Fetch availability for months (Requirement 2.4.2)
             let mut tasks = Vec::new();
             let base_date = Local::now().date_naive();
 
@@ -145,7 +131,7 @@ impl Agent {
                             info!("{}", json!({"event": "availability_found", "date": avail.date.to_string(), "booking_url": avail.booking_url}));
                             
                             if self.handle_found_date(avail).await? {
-                                return Ok(()); // Stop run if booking succeeded or alert sent
+                                return Ok(()); 
                             }
                         }
                     }
@@ -154,7 +140,6 @@ impl Agent {
 
             check_count += 1;
 
-            // Rest Cycle logic (Requirement 2.4.5)
             if self.config.check_window > Duration::from_secs(60) && check_count % self.config.rest_cycle_checks == 0 {
                 sleep(self.config.rest_cycle_duration).await;
             }
@@ -166,14 +151,13 @@ impl Agent {
         Ok(())
     }
 
-    /// Decides whether to Alert or Book based on the date found.
     async fn handle_found_date(&self, availability: crate::scraper::Availability) -> Result<bool> {
         let is_preferred = self.config.preferred_days.contains(&availability.date.format("%A").to_string());
         
         match self.config.mode {
             Mode::Alert => {
                 self.send_ntfy(&availability).await?;
-                Ok(true) // Run finishes after alert
+                Ok(true) 
             }
             Mode::Booking => {
                 if is_preferred {
@@ -182,17 +166,16 @@ impl Agent {
                     let creds = self.config.get_selected_credential().ok_or_else(|| anyhow!("No credential selected"))?;
                     
                     match Booker::attempt_booking(&client, site, creds, &availability.booking_url).await {
-                        Ok(_) => Ok(true), // Booking successful, stop run
-                        Err(_) => Ok(false), // Booking failed, continue loop
+                        Ok(_) => Ok(true),
+                        Err(_) => Ok(false),
                     }
                 } else {
-                    Ok(false) // Not a preferred day, continue looking
+                    Ok(false) 
                 }
             }
         }
     }
 
-    /// Sends a notification to ntfy.
     async fn send_ntfy(&self, availability: &crate::scraper::Availability) -> Result<()> {
         let client = self.client_pool.get_default();
         let topic = &self.config.ntfy_topic;
