@@ -3,8 +3,7 @@ name: Rust CI & Docker Build
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch: 
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,8 +30,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Changed from 1.85.0 to stable to support modern transitive dependencies 
-          # required by Axum 0.8 and Wreq 6-rc.
+          # Changed from 1.85.0 to stable (1.86+) to meet icu_collections requirements
           toolchain: stable
           components: clippy, rustfmt
 
