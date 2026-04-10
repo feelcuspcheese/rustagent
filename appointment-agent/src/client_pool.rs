@@ -1,7 +1,7 @@
 /*
  * Version: 0.1.4
  * Description: HTTP client pool with browser impersonation.
- * Updated for wreq 6.0.0-rc.25 API changes.
+ * Updated for wreq 6.0.0-rc.25 API changes (.emulation method).
  */
 
 use anyhow::Result;
