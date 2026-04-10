@@ -8,7 +8,7 @@ edition = "2021"
 tokio = { version = "1.43", features = ["full", "tracing", "signal"] }
 
 # Networking & Stealth
-# Using rc.25 to avoid typed-builder macro bugs in rc.26
+# Using rc.25 to avoid typed-builder macro bugs in newer RCs
 wreq = "6.0.0-rc.25"
 wreq-util = "3.0.0-rc.1"
 
@@ -16,7 +16,8 @@ wreq-util = "3.0.0-rc.1"
 scraper = "0.22"
 
 # Web Dashboard & API
-axum = "0.8"
+# Added "ws" feature for WebSocket support
+axum = { version = "0.8", features = ["ws"] }
 tokio-tungstenite = "0.26"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
@@ -31,7 +32,6 @@ uuid = { version = "1.13", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 # Transitive Dependency Pins (Fixes Rust 1.86+ MSRV conflicts)
-# Research shows version 2.1 is the last icu4x series compatible with standard MSRV
 icu_collections = "=2.1.0"
 icu_locid = "=1.5.0"
 icu_properties = "=1.5.1"
