@@ -1,6 +1,6 @@
 [package]
 name = "appointment-agent"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 
 [dependencies]
@@ -8,15 +8,14 @@ edition = "2021"
 tokio = { version = "1.43", features = ["full", "tracing", "signal"] }
 
 # Networking & Stealth
-# Using rc.25 to avoid typed-builder macro bugs in newer RCs
-wreq = "6.0.0-rc.25"
+# Added cookies and json features to wreq
+wreq = { version = "6.0.0-rc.25", features = ["cookies", "json"] }
 wreq-util = "3.0.0-rc.1"
 
 # Web Scraping
 scraper = "0.22"
 
 # Web Dashboard & API
-# Added "ws" feature for WebSocket support as required by Requirement 2.7
 axum = { version = "0.8", features = ["ws"] }
 tokio-tungstenite = "0.26"
 tower = "0.5"
