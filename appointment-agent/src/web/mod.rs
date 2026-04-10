@@ -1,6 +1,8 @@
 /*
- * Version: 0.1.2
+ * Version: 0.1.3
+ * Description: Dashboard API compatible with Axum 0.8.
  */
+
 use axum::{
     extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::IntoResponse,
