@@ -1,0 +1,39 @@
+```
+# Compiled and build artifacts
+target/
+**/*.rs.bk
+**/*.rlib
+
+# Dependencies
+Cargo.lock
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# MyPy
+.mypy_cache/
+.pytest_cache/
+```
