@@ -1,7 +1,6 @@
 /*
- * Version: 0.1.1
- * Description: Configuration structures and persistence logic for the Appointment Agent.
- * Strictly implements the schema defined in REQUIREMENT.md v2.0.
+ * Version: 0.1.2
+ * Description: Configuration structures using the serde_yml fork.
  */
 
 use serde::{Deserialize, Serialize};
@@ -30,7 +29,7 @@ pub struct LoginFormConfig {
     pub usernamefield: String,
     pub passwordfield: String,
     pub submitbutton: String,
-    #[(default)]
+    #[serde(default)]
     pub csrfselector: String,
     pub authidselector: String,
     pub loginurlselector: String,
@@ -38,7 +37,7 @@ pub struct LoginFormConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BookingFormConfig {
-    #[(default)]
+    #[serde(default)]
     pub actionurl: String,
     pub emailfield: String,
 }
@@ -74,25 +73,18 @@ pub struct Config {
     pub mode: Mode,
     pub preferred_days: Vec<String>,
     pub strike_time: String,
-    
     #[serde(with = "humantime_serde")]
     pub check_window: Duration,
-    
     #[serde(with = "humantime_serde")]
     pub check_interval: Duration,
-    
     #[serde(with = "humantime_serde")]
     pub pre_warm_offset: Duration,
-    
     #[serde(with = "humantime_serde")]
     pub request_jitter: Duration,
-    
     pub months_to_check: u32,
     pub rest_cycle_checks: u32,
-    
     #[serde(with = "humantime_serde")]
     pub rest_cycle_duration: Duration,
-    
     pub ntfy_topic: String,
     pub credentials: HashMap<String, CredentialConfig>,
     pub selected_credential: String,
@@ -100,48 +92,39 @@ pub struct Config {
 }
 
 impl Config {
-    /// Loads configuration from a YAML file.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = fs::read_to_string(path)?;
-        let config: Config = serde_yaml::from_str(&content)?;
+        let config: Config = serde_yml::from_str(&content)?;
         Ok(config)
     }
 
-    /// Saves configuration to a YAML file.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let content = serde_yaml::to_string(self)?;
+        let content = serde_yml::to_string(self)?;
         fs::write(path, content)?;
         Ok(())
     }
 
-    /// Returns the currently active site configuration based on `active_site`.
     pub fn get_active_site(&self) -> Option<&SiteConfig> {
         self.sites.get(&self.active_site)
     }
 
-    /// Returns the currently selected credential.
     pub fn get_selected_credential(&self) -> Option<&CredentialConfig> {
         self.credentials.get(&self.selected_credential)
     }
 }
 
-/// Helper module for human-readable duration serialization/deserialization.
 mod humantime_serde {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::time::Duration;
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
+    where D: Deserializer<'de> {
         let s = String::deserialize(deserializer)?;
         humantime::parse_duration(&s).map_err(serde::de::Error::custom)
     }
 
     pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
+    where S: Serializer {
         humantime::format_duration(*duration).to_string().serialize(serializer)
     }
 }
