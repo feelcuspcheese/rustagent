@@ -1,144 +1,151 @@
-use anyhow::{Result, anyhow};
-use tracing::{debug, error, info, warn};
+/*
+ * Version: 0.1.1
+ * Description: Automated login and booking form submission logic.
+ * Strictly adheres to REQUIREMENT.md v2.0 Section 2.3 (Parsing Rules) and 2.5 (Login & Booking Rules).
+ */
+
+use anyhow::{anyhow, Context, Result};
+use scraper::{Html, Selector};
+use serde_json::json;
+use std::collections::HashMap;
+use tracing::info;
+use url::Url;
 use wreq::Client;
 
-use crate::config::Credential;
-use crate::scraper::{BookingFormFields, LoginFormFields, Scraper};
+use crate::config::{CredentialConfig, SiteConfig};
 
-pub struct Booker {
-    client: Client,
-}
+pub struct Booker;
 
 impl Booker {
-    pub fn new(client: Client) -> Self {
-        Self { client }
+    /// Executes the full booking flow: Login (if needed) -> Form Submission -> Verification.
+    pub async fn attempt_booking(
+        client: &Client,
+        site: &SiteConfig,
+        creds: &CredentialConfig,
+        booking_url: &str,
+    ) -> Result<()> {
+        info!("{}", json!({"event": "booking_attempt", "date": booking_url}));
+
+        // 1. Navigate to booking page (handles redirects automatically)
+        let resp = client.get(booking_url).send().await?;
+        let mut body = resp.text().await?;
+        let mut current_url = booking_url.to_string();
+
+        // 2. Check for Login Form (Requirement 2.3 & 2.5)
+        if body.contains("form_login") {
+            info!("{}", json!({"event": "login_required"}));
+            body = Self::handle_login(client, site, creds, &body, &current_url).await?;
+            info!("{}", json!({"event": "login_success"}));
+        }
+
+        // 3. Process Booking Form (Requirement 2.3 & 2.5)
+        let booking_result_body = Self::handle_booking_form(client, site, creds, &body, &current_url).await?;
+
+        // 4. Verify Success (Requirement 2.5)
+        if booking_result_body.contains(&site.successindicator) {
+            info!("{}", json!({"event": "booking_success", "date": booking_url}));
+            Ok(())
+        } else {
+            let err_msg = "Success indicator not found in response";
+            info!("{}", json!({"event": "booking_failed", "date": booking_url, "error": err_msg}));
+            Err(anyhow!(err_msg))
+        }
     }
 
-    /// Perform login using extracted form fields and credentials
-    pub async fn login(
-        &self,
-        login_fields: &LoginFormFields,
-        credential: &Credential,
-    ) -> Result<bool> {
-        info!("Attempting login");
+    /// Detects and submits the login form.
+    async fn handle_login(
+        client: &Client,
+        site: &SiteConfig,
+        creds: &CredentialConfig,
+        html_content: &str,
+        page_url: &str,
+    ) -> Result<String> {
+        let document = Html::parse_document(html_content);
+        
+        // Find form whose action contains "form_login"
+        let form_selector = Selector::parse("form[action*='form_login']").unwrap();
+        let form_element = document.select(&form_selector).next()
+            .ok_or_else(|| anyhow!("Login form not found even though 'form_login' detected in body"))?;
 
-        let mut retries = 0;
-        let max_retries = 2;
+        let action = form_element.value().attr("action")
+            .ok_or_else(|| anyhow!("Login form missing action attribute"))?;
+        
+        let base_url = Url::parse(page_url)?;
+        let login_action_url = base_url.join(action)?.to_string();
 
-        loop {
-            let response = self
-                .client
-                .post(&login_fields.action_url)
-                .form(&[
-                    ("auth_id", &login_fields.auth_id),
-                    ("login_url", &login_fields.login_url),
-                    ("username", &credential.username),
-                    ("password", &credential.password),
-                ])
-                .send()
-                .await;
+        // Extract hidden fields: auth_id and login_url (Requirement 2.1 / 2.3)
+        let auth_id = Self::extract_input_value(&document, &site.loginform.authidselector)?;
+        let login_url_val = Self::extract_input_value(&document, &site.loginform.loginurlselector)?;
 
-            match response {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if status.is_success() || status.is_redirection() {
-                        info!("Login successful");
-                        return Ok(true);
-                    } else if status.is_client_error() || status.is_server_error() {
-                        warn!("Login failed with status: {}", status);
-                        retries += 1;
-                        if retries >= max_retries {
-                            error!("Login failed after {} retries", max_retries);
-                            return Ok(false);
-                        }
-                        // Retry with same client (cookies persist)
-                        continue;
-                    } else {
-                        info!("Login returned unexpected status: {}", status);
-                        return Ok(true); // Assume success for non-error statuses
-                    }
-                }
-                Err(e) => {
-                    error!("Login request failed: {}", e);
-                    retries += 1;
-                    if retries >= max_retries {
-                        return Err(anyhow!("Login failed after retries: {}", e));
-                    }
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                }
+        // Build POST data
+        let mut params = HashMap::new();
+        params.insert(site.loginform.usernamefield.clone(), creds.username.clone());
+        params.insert(site.loginform.passwordfield.clone(), creds.password.clone());
+        params.insert("auth_id".to_string(), auth_id);
+        params.insert("login_url".to_string(), login_url_val);
+        params.insert(site.loginform.submitbutton.clone(), "1".to_string());
+
+        // Perform login POST
+        let resp = client.post(&login_action_url)
+            .form(&params)
+            .send()
+            .await
+            .context("Failed to submit login form")?;
+
+        Ok(resp.text().await?)
+    }
+
+    /// Detects and submits the final booking form (s-lc-bform).
+    async fn handle_booking_form(
+        client: &Client,
+        site: &SiteConfig,
+        creds: &CredentialConfig,
+        html_content: &str,
+        page_url: &str,
+    ) -> Result<String> {
+        let document = Html::parse_document(html_content);
+        
+        // Requirement 2.3: Look for <form id="s-lc-bform">
+        let form_selector = Selector::parse("form#s-lc-bform").unwrap();
+        let form_element = document.select(&form_selector).next()
+            .ok_or_else(|| anyhow!("Booking form (s-lc-bform) not found on page"))?;
+
+        let action = form_element.value().attr("action")
+            .ok_or_else(|| anyhow!("Booking form missing action attribute"))?;
+        
+        let base_url = Url::parse(page_url)?;
+        let booking_action_url = base_url.join(action)?.to_string();
+
+        // Requirement 2.3: Extract all hidden inputs
+        let mut params = HashMap::new();
+        let hidden_selector = Selector::parse("input[type='hidden']").unwrap();
+        for input in form_element.select(&hidden_selector) {
+            if let (Some(name), Some(value)) = (input.value().attr("name"), input.value().attr("value")) {
+                params.insert(name.to_string(), value.to_string());
             }
         }
+
+        // Requirement 2.3: Set the email field
+        params.insert(site.bookingform.emailfield.clone(), creds.email.clone());
+
+        // Perform booking POST
+        let resp = client.post(&booking_action_url)
+            .form(&params)
+            .send()
+            .await
+            .context("Failed to submit booking form")?;
+
+        Ok(resp.text().await?)
     }
 
-    /// Attempt to book an appointment
-    pub async fn book(
-        &self,
-        booking_fields: &BookingFormFields,
-        credential: &Credential,
-        success_indicator: &str,
-    ) -> Result<bool> {
-        info!("Attempting booking");
-
-        // Build form data from hidden fields
-        let mut form_data: Vec<(&str, &str)> = booking_fields
-            .hidden_fields
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-
-        // Add email field if present
-        if let Some(email_field) = &booking_fields.email_field_name {
-            form_data.push((email_field.as_str(), &credential.email));
-        }
-
-        // Resolve action URL if relative
-        let action_url = if booking_fields.action_url.starts_with("http") {
-            booking_fields.action_url.clone()
-        } else {
-            // This would need base URL from context - for now assume absolute or handle in caller
-            booking_fields.action_url.clone()
-        };
-
-        let response = self.client.post(&action_url).form(&form_data).send().await?;
-        let html = response.text().await?;
-
-        // Check for success indicator
-        let scraper = Scraper::new(self.client.clone());
-        if scraper.check_success(&html, success_indicator) {
-            info!("Booking successful!");
-            Ok(true)
-        } else {
-            debug!("Booking response snippet: {}", &html[..html.len().min(500)]);
-            Err(anyhow!("Booking failed - success indicator not found"))
-        }
-    }
-
-    /// Follow a booking URL and determine if login is required
-    pub async fn follow_booking_url(&self, url: &str) -> Result<BookingPageState> {
-        info!("Following booking URL: {}", url);
+    /// Utility to extract an input value by selector.
+    fn extract_input_value(doc: &Html, selector_str: &str) -> Result<String> {
+        let selector = Selector::parse(selector_str)
+            .map_err(|_| anyhow!("Invalid selector: {}", selector_str))?;
         
-        let response = self.client.get(url).send().await?;
-        let html = response.text().await?;
-
-        let scraper = Scraper::new(self.client.clone());
-        
-        // Check if login form is present
-        if let Some(login_fields) = scraper.detect_login_form(&html) {
-            info!("Login required");
-            Ok(BookingPageState::LoginRequired(login_fields))
-        } else if let Some(booking_fields) = scraper.detect_booking_form(&html) {
-            info!("Booking form found");
-            Ok(BookingPageState::BookingReady(booking_fields))
-        } else {
-            warn!("Could not detect form type on booking page");
-            Ok(BookingPageState::Unknown(html))
-        }
+        doc.select(&selector).next()
+            .and_then(|el| el.value().attr("value"))
+            .map(|v| v.to_string())
+            .ok_or_else(|| anyhow!("Could not find value for selector: {}", selector_str))
     }
-}
-
-#[derive(Debug)]
-pub enum BookingPageState {
-    LoginRequired(LoginFormFields),
-    BookingReady(BookingFormFields),
-    Unknown(String),
 }
