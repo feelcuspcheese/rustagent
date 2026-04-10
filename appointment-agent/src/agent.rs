@@ -1,7 +1,7 @@
 /*
  * Version: 0.1.4
  * Description: The main orchestration engine for the Appointment Agent.
- * Cleanup: Removed unused imports.
+ * Cleanup: Removed unused NaiveDate import.
  */
 
 use anyhow::{anyhow, Result};
@@ -73,9 +73,9 @@ impl Agent {
         let _ = client.get(&site.baseurl).send().await; 
         info!("{}", json!({"event": "pre_warm_complete"}));
 
-        let strike_dt_std = strike_dt.signed_duration_since(Local::now()).to_std().unwrap_or(Duration::from_secs(0));
-        if strike_dt_std > Duration::from_millis(10) {
-            sleep(strike_dt_std - Duration::from_millis(10)).await;
+        let time_to_strike = strike_dt.signed_duration_since(Local::now());
+        if time_to_strike.num_milliseconds() > 10 {
+            sleep(time_to_strike.to_std()? - Duration::from_millis(10)).await;
         }
 
         while Local::now() < strike_dt {
