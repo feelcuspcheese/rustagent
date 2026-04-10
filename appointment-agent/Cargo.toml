@@ -8,7 +8,7 @@ edition = "2021"
 tokio = { version = "1.43", features = ["full", "tracing", "signal"] }
 
 # Networking & Stealth
-# Added cookies and json features to wreq
+# Requirement 2.8: Enable cookies and json features for form handling and session persistence
 wreq = { version = "6.0.0-rc.25", features = ["cookies", "json"] }
 wreq-util = "3.0.0-rc.1"
 
@@ -16,6 +16,7 @@ wreq-util = "3.0.0-rc.1"
 scraper = "0.22"
 
 # Web Dashboard & API
+# Requirement 2.7: Enable ws feature for real-time dashboard logs
 axum = { version = "0.8", features = ["ws"] }
 tokio-tungstenite = "0.26"
 tower = "0.5"
