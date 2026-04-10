@@ -1,12 +1,10 @@
 /*
  * Version: 0.1.2
- * Description: Dashboard API compatible with Axum 0.8.
  */
-
 use axum::{
     extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::IntoResponse,
-    routing::{get},
+    routing::get,
     Json, Router,
 };
 use std::sync::Arc;
@@ -86,7 +84,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             Ok(p) => p,
             Err(_) => continue,
         };
-        // Axum 0.8 WebSocket Message Text handling
+        // Axum 0.8 uses into() for Message::Text
         if socket.send(Message::Text(payload.into())).await.is_err() {
             break;
         }
