@@ -9,11 +9,18 @@ env:
   CARGO_TERM_COLOR: always
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  # Define the working directory as an environment variable
+  WORKING_DIR: appointment-agent
 
 jobs:
   test:
     name: Test and Audit
     runs-on: ubuntu-latest
+    # Set the default working directory for all 'run' steps in this job
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+        
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +37,9 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # Tell the cache to look inside the subdirectory for Cargo.toml
+          workspaces: ${{ env.WORKING_DIR }} -> target
 
       - name: Run Tests
         run: cargo test --verbose
@@ -76,7 +86,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          # Point context to the subdirectory where the Dockerfile and code live
+          context: ${{ env.WORKING_DIR }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
