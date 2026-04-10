@@ -1,7 +1,7 @@
 /*
  * Version: 0.1.4
  * Description: Dashboard API compatible with Axum 0.8.
- * Fixed WebSocket feature gating and text message ambiguity.
+ * Fixed WebSocket feature gating and text message type ambiguity.
  */
 
 use axum::{
@@ -86,8 +86,8 @@ async fn handle_socket(mut socket: WebSocket, state: AppState) {
             Ok(p) => p,
             Err(_) => continue,
         };
-        // Explicitly use Message::Text(String) to avoid ambiguity in Axum 0.8 / Tungstenite 0.26
-        if socket.send(Message::Text(payload)).await.is_err() {
+        // Use explicit string conversion to resolve Axum 0.8 / Tungstenite 0.26 type ambiguity
+        if socket.send(Message::Text(payload.into())).await.is_err() {
             break;
         }
     }
