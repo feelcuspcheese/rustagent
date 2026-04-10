@@ -1,13 +1,11 @@
 /*
- * Version: 0.1.1
+ * Version: 0.1.4
  * Description: Main entry point for the Appointment Agent.
- * Ties together CLI parsing, logging, web dashboard, and the orchestration engine.
+ * Cleanup: Removed unused imports.
  */
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::path::PathBuf;
-use std::sync::Arc;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -40,11 +38,10 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 1. Initialize Logging (Requirement 2.7)
-    // We use JSON formatting as required by the Logging Contract.
+    // 1. Initialize Logging
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::INFO)
-        .json() // Mandatory JSON output for automated log parsing
+        .json() 
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)
@@ -60,29 +57,25 @@ async fn main() -> Result<()> {
     
     info!("Configuration loaded from {}", config_path);
 
-    // 4. Initialize Client Pool (Requirement 2.8)
+    // 4. Initialize Client Pool
     let client_pool = ClientPool::new()
         .context("Failed to initialize stealth client pool")?;
 
     // 5. Execution Strategy
     if args.web {
-        // Run with Web Dashboard (Requirement 2.4)
         info!("Starting agent in web mode...");
         
         let web_config = config.clone();
         let web_path = config_path.clone();
         
-        // Spawn web server in the background
         let web_handle = tokio::spawn(async move {
             if let Err(e) = web::WebServer::run(web_config, web_path).await {
                 eprintln!("Web server error: {}", e);
             }
         });
 
-        // Initialize Agent
         let agent = Agent::new(config, client_pool);
         
-        // In web mode, we run the agent. If it finishes, the web server stays up.
         tokio::select! {
             agent_res = agent.run() => {
                 if let Err(e) = agent_res {
@@ -97,7 +90,6 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        // Run in CLI mode
         info!("Starting agent in CLI mode...");
         let agent = Agent::new(config, client_pool);
         
