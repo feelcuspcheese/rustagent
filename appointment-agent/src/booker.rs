@@ -1,6 +1,6 @@
 /*
  * Version: 0.1.5
- * Description: Login/Booking flow. Fixed type inference for wreq send().
+ * Description: Login and booking flow. Fixed mut warning and type inference issues.
  */
 
 use anyhow::{anyhow, Context, Result};
@@ -24,10 +24,10 @@ impl Booker {
     ) -> Result<()> {
         info!("{}", json!({"event": "booking_attempt", "date": booking_url}));
 
-        // Explicitly annotate response to help type inference
-        let resp = client.get(booking_url).send().await?;
+        // Type annotation helps with type inference errors
+        let resp: wreq::Response = client.get(booking_url).send().await?;
         let mut body = resp.text().await?;
-        let current_url = booking_url.to_string();
+        let current_url = booking_url.to_string(); // Removed mut as it's not changed
 
         if body.contains("form_login") {
             info!("{}", json!({"event": "login_required"}));
@@ -55,12 +55,13 @@ impl Booker {
         page_url: &str,
     ) -> Result<String> {
         let document = Html::parse_document(html_content);
+        
         let form_selector = Selector::parse("form[action*='form_login']").unwrap();
         let form_element = document.select(&form_selector).next()
             .ok_or_else(|| anyhow!("Login form not found"))?;
 
         let action = form_element.value().attr("action")
-            .ok_or_else(|| anyhow!("Login form missing action"))?;
+            .ok_or_else(|| anyhow!("Login form missing action attribute"))?;
         
         let base_url = Url::parse(page_url)?;
         let login_action_url = base_url.join(action)?.to_string();
@@ -75,7 +76,7 @@ impl Booker {
         params.insert("login_url".to_string(), login_url_val);
         params.insert(site.loginform.submitbutton.clone(), "1".to_string());
 
-        let resp = client.post(&login_action_url)
+        let resp: wreq::Response = client.post(&login_action_url)
             .form(&params)
             .send()
             .await
@@ -92,12 +93,13 @@ impl Booker {
         page_url: &str,
     ) -> Result<String> {
         let document = Html::parse_document(html_content);
+        
         let form_selector = Selector::parse("form#s-lc-bform").unwrap();
         let form_element = document.select(&form_selector).next()
             .ok_or_else(|| anyhow!("Booking form (s-lc-bform) not found"))?;
 
         let action = form_element.value().attr("action")
-            .ok_or_else(|| anyhow!("Booking form missing action"))?;
+            .ok_or_else(|| anyhow!("Booking form missing action attribute"))?;
         
         let base_url = Url::parse(page_url)?;
         let booking_action_url = base_url.join(action)?.to_string();
@@ -112,8 +114,7 @@ impl Booker {
 
         params.insert(site.bookingform.emailfield.clone(), creds.email.clone());
 
-        // Explicitly annotate to resolve type inference error
-        let resp = client.post(&booking_action_url)
+        let resp: wreq::Response = client.post(&booking_action_url)
             .form(&params)
             .send()
             .await
