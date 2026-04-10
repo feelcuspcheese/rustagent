@@ -1,15 +1,12 @@
 /*
- * Version: 0.1.1
- * Description: Web dashboard and REST API for the Appointment Agent.
- * Strictly adheres to REQUIREMENT.md v2.0 Section 2.7 (Logging Contract) and API specifications.
+ * Version: 0.1.2
+ * Description: Dashboard API compatible with Axum 0.8.
  */
-
-use axum::extract::ws::Utf8Bytes;
 
 use axum::{
     extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::IntoResponse,
-    routing::{get, put},
+    routing::{get},
     Json, Router,
 };
 use std::sync::Arc;
@@ -25,13 +22,6 @@ pub struct AppState {
     pub config_path: String,
     pub logs: Arc<DashMap<String, Vec<serde_json::Value>>>,
     pub tx: broadcast::Sender<serde_json::Value>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct RunHistory {
-    pub run_id: String,
-    pub timestamp: String,
-    pub events: Vec<serde_json::Value>,
 }
 
 pub struct WebServer;
@@ -56,22 +46,16 @@ impl WebServer {
         let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
         info!("Web dashboard running on http://0.0.0.0:8080");
         axum::serve(listener, app).await?;
-        
         Ok(())
     }
 }
-
-// --- API Handlers ---
 
 async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
     let cfg = state.config.read().await;
     Json(cfg.clone())
 }
 
-async fn update_config(
-    State(state): State<AppState>,
-    Json(new_cfg): Json<Config>,
-) -> impl IntoResponse {
+async fn update_config(State(state): State<AppState>, Json(new_cfg): Json<Config>) -> impl IntoResponse {
     let mut cfg = state.config.write().await;
     *cfg = new_cfg;
     if let Err(e) = cfg.save(&state.config_path) {
@@ -82,46 +66,33 @@ async fn update_config(
 }
 
 async fn get_runs(State(state): State<AppState>) -> impl IntoResponse {
-    // Returns list of unique run_ids from log store
     let run_ids: Vec<String> = state.logs.iter().map(|r| r.key().clone()).collect();
     Json(run_ids)
 }
 
 async fn get_logs(State(state): State<AppState>) -> impl IntoResponse {
-    // Returns all logs across all runs (simplified for MVP)
-    let all_logs: Vec<serde_json::Value> = state.logs.iter()
-        .flat_map(|r| r.value().clone())
-        .collect();
+    let all_logs: Vec<serde_json::Value> = state.logs.iter().flat_map(|r| r.value().clone()).collect();
     Json(all_logs)
 }
 
-// --- WebSocket Logic ---
-
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
 async fn handle_socket(mut socket: WebSocket, state: AppState) {
     let mut rx = state.tx.subscribe();
-
     while let Ok(msg) = rx.recv().await {
         let payload = match serde_json::to_string(&msg) {
             Ok(p) => p,
             Err(_) => continue,
         };
-
-        // axum 0.7.x uses Utf8Bytes or similar for Text messages
+        // Axum 0.8 WebSocket Message Text handling
         if socket.send(Message::Text(payload.into())).await.is_err() {
             break;
         }
     }
 }
 
-/// Helper to inject logs into the web state from the agent engine.
-/// This fulfills the Logging Contract by making events available to the dashboard.
 pub fn broadcast_log(state: &AppState, log_event: serde_json::Value) {
     if let Some(run_id) = log_event.get("run_id").and_then(|v| v.as_str()) {
         let mut entry = state.logs.entry(run_id.to_string()).or_insert_with(Vec::new);
