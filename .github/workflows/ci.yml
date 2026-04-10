@@ -3,8 +3,7 @@ name: Rust CI & Docker Build
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch: 
 
 env:
   CARGO_TERM_COLOR: always
