@@ -1,6 +1,6 @@
 /*
  * Version: 0.1.5
- * Description: Library entry point to expose modules for main.rs and integration tests.
+ * Description: Library entry point. Exposes modules for main.rs and integration tests.
  */
 
 pub mod config;
