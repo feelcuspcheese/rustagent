@@ -1,126 +1,129 @@
+/*
+ * Version: 0.1.1
+ * Description: Web dashboard and REST API for the Appointment Agent.
+ * Strictly adheres to REQUIREMENT.md v2.0 Section 2.7 (Logging Contract) and API specifications.
+ */
+
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
+    extract::{State, ws::{Message, WebSocket, WebSocketUpgrade}},
     response::IntoResponse,
-    routing::get,
+    routing::{get, put},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
-use tower_http::cors::{Any, CorsLayer};
-
-use crate::agent::AgentEvent;
+use tokio::sync::broadcast;
+use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
+use tracing::{info, error};
 use crate::config::Config;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub config: Arc<RwLock<Option<Config>>>,
-    pub log_tx: broadcast::Sender<AgentEvent>,
-    pub runs: Arc<RwLock<Vec<RunInfo>>>,
+    pub config: Arc<tokio::sync::RwLock<Config>>,
+    pub config_path: String,
+    pub logs: Arc<DashMap<String, Vec<serde_json::Value>>>,
+    pub tx: broadcast::Sender<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RunInfo {
-    pub id: String,
-    pub status: String,
-    pub started_at: String,
-    pub ended_at: Option<String>,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RunHistory {
+    pub run_id: String,
+    pub timestamp: String,
+    pub events: Vec<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConfigResponse {
-    pub config: Option<Config>,
-    pub loaded: bool,
+pub struct WebServer;
+
+impl WebServer {
+    pub async fn run(config: Config, config_path: String) -> anyhow::Result<()> {
+        let (tx, _rx) = broadcast::channel(100);
+        let state = AppState {
+            config: Arc::new(tokio::sync::RwLock::new(config)),
+            config_path,
+            logs: Arc::new(DashMap::new()),
+            tx,
+        };
+
+        let app = Router::new()
+            .route("/api/config", get(get_config).put(update_config))
+            .route("/api/runs", get(get_runs))
+            .route("/api/logs", get(get_logs))
+            .route("/api/ws", get(ws_handler))
+            .with_state(state);
+
+        let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+        info!("Web dashboard running on http://0.0.0.0:8080");
+        axum::serve(listener, app).await?;
+        
+        Ok(())
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RunsResponse {
-    pub runs: Vec<RunInfo>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LogsResponse {
-    pub logs: Vec<AgentEvent>,
-}
-
-pub fn create_router(state: AppState) -> Router {
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
-    Router::new()
-        .route("/api/config", get(get_config).put(update_config))
-        .route("/api/runs", get(get_runs))
-        .route("/api/logs", get(get_logs))
-        .route("/api/ws", get(websocket_handler))
-        .with_state(state)
-        .layer(cors)
-}
+// --- API Handlers ---
 
 async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
-    let config = state.config.read().await;
-    match &*config {
-        Some(c) => Json(ConfigResponse {
-            config: Some(c.clone()),
-            loaded: true,
-        }),
-        None => Json(ConfigResponse {
-            config: None,
-            loaded: false,
-        }),
-    }
+    let cfg = state.config.read().await;
+    Json(cfg.clone())
 }
 
 async fn update_config(
     State(state): State<AppState>,
-    Json(new_config): Json<Config>,
+    Json(new_cfg): Json<Config>,
 ) -> impl IntoResponse {
-    let mut config = state.config.write().await;
-    *config = Some(new_config);
-    Json(ConfigResponse {
-        config: (*config).clone(),
-        loaded: true,
-    })
+    let mut cfg = state.config.write().await;
+    *cfg = new_cfg;
+    if let Err(e) = cfg.save(&state.config_path) {
+        error!("Failed to save config: {}", e);
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to save config").into_response();
+    }
+    Json(cfg.clone()).into_response()
 }
 
 async fn get_runs(State(state): State<AppState>) -> impl IntoResponse {
-    let runs = state.runs.read().await;
-    Json(RunsResponse {
-        runs: runs.clone(),
-    })
+    // Returns list of unique run_ids from log store
+    let run_ids: Vec<String> = state.logs.iter().map(|r| r.key().clone()).collect();
+    Json(run_ids)
 }
 
-async fn get_logs(State(_state): State<AppState>) -> impl IntoResponse {
-    // In a real implementation, we'd store logs in memory or retrieve from a buffer
-    Json(LogsResponse { logs: vec![] })
+async fn get_logs(State(state): State<AppState>) -> impl IntoResponse {
+    // Returns all logs across all runs (simplified for MVP)
+    let all_logs: Vec<serde_json::Value> = state.logs.iter()
+        .flat_map(|r| r.value().clone())
+        .collect();
+    Json(all_logs)
 }
 
-async fn websocket_handler(
-    State(_state): State<AppState>,
+// --- WebSocket Logic ---
+
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
 ) -> impl IntoResponse {
-    // WebSocket upgrade handling would go here
-    // For now, return a simple response
-    StatusCode::OK
+    ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
-pub async fn run_webserver(
-    config: Option<Config>,
-    log_tx: broadcast::Sender<AgentEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let state = AppState {
-        config: Arc::new(RwLock::new(config)),
-        log_tx,
-        runs: Arc::new(RwLock::new(Vec::new())),
-    };
+async fn handle_socket(mut socket: WebSocket, state: AppState) {
+    let mut rx = state.tx.subscribe();
 
-    let app = create_router(state);
+    while let Ok(msg) = rx.recv().await {
+        let payload = match serde_json::to_string(&msg) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
-    tracing::info!("Web server listening on port 8080");
-    
-    axum::serve(listener, app).await?;
-    
-    Ok(())
+        if socket.send(Message::Text(payload.into())).await.is_err() {
+            // Client disconnected
+            break;
+        }
+    }
+}
+
+/// Helper to inject logs into the web state from the agent engine.
+/// This fulfills the Logging Contract by making events available to the dashboard.
+pub fn broadcast_log(state: &AppState, log_event: serde_json::Value) {
+    if let Some(run_id) = log_event.get("run_id").and_then(|v| v.as_str()) {
+        let mut entry = state.logs.entry(run_id.to_string()).or_insert_with(Vec::new);
+        entry.push(log_event.clone());
+    }
+    let _ = state.tx.send(log_event);
 }
