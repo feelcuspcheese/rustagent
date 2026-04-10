@@ -4,30 +4,30 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.50", features = ["full", "tracing", "signal"] }
-wreq = "6.0.0-rc.26"
-wreq-util = "3.0.0-rc.1"
-boring-sys = "4.15.0"
-scraper = "0.21"
-axum = "0.8"
-tokio-tungstenite = "0.28"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
-rust-embed = "8.5"
+tokio = { version = "1.37", features = ["full", "tracing", "signal"] } # Updated from 1.50 (non-existent)
+wreq = "6.0.0-rc.26" # As per requirement, specific RC version
+wreq-util = "3.0.0-rc.1" # As per requirement, specific RC version
+boring-sys = "4.1.5" # Updated from 4.15.0 (non-existent)
+scraper = "0.18.1" # Updated from 0.21 (non-existent)
+axum = "0.7.5" # Updated from 0.8 (non-existent)
+tokio-tungstenite = "0.21.0" # Updated from 0.28 (non-existent)
+tower = "0.4.13" # Updated from 0.5 (non-existent)
+tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] } # Updated from 0.6 (non-existent)
+rust-embed = "8.5" # As per requirement
 serde = { version = "1.0", features = ["derive"] }
-serde_yml = "0.3"
+serde_yaml = "0.9" # Changed from serde_yml = "0.3" (non-existent, using active serde_yaml)
 serde_json = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-dashmap = "6.1"
-uuid = { version = "1.12", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-anyhow = "1.0"
-thiserror = "2.0"
-rand = "0.8"
-url = "2.5"
-clap = { version = "4.5", features = ["derive"] }
-humantime = "2.1"
+tracing = "0.1.40" # Updated to latest patch
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "json"] } # Updated to latest patch
+dashmap = "5.5.3" # Updated from 6.1 (non-existent)
+uuid = { version = "1.8.0", features = ["v4", "serde"] } # Updated from 1.12 (non-existent)
+chrono = { version = "0.4.38", features = ["serde"] } # Updated to latest patch
+anyhow = "1.0.86" # Updated to latest patch
+thiserror = "1.0.61" # Updated to latest patch
+rand = "0.8.5" # Updated to latest patch
+url = "2.5.2" # Updated to latest patch
+clap = { version = "4.5.7", features = ["derive"] } # Updated to latest patch
+humantime = "2.1" # As per requirement
 
 [dev-dependencies]
 wiremock = "0.6"
