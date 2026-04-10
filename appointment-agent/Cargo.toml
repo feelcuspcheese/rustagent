@@ -1,39 +1,37 @@
 [package]
 name = "appointment-agent"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-# Core Async Runtime
-tokio = { version = "1.37", features = ["full", "tracing", "signal"] }
+# Core Runtime
+tokio = { version = "1.43", features = ["full", "tracing", "signal"] }
 
-# Networking & Stealth (wreq handles its own boring-sys internal dependencies)
+# Networking & Stealth (Do NOT add boring-sys here, wreq handles it)
 wreq = "6.0.0-rc.26"
 wreq-util = "3.0.0-rc.1"
 
 # Web Scraping
-scraper = "0.19.0"
+scraper = "0.22"
 
-# Web Dashboard & API
-axum = "0.7.5"
-tokio-tungstenite = "0.23.1"
-tower = "0.4.13"
-tower-http = { version = "0.5.2", features = ["cors", "trace", "fs"] }
-rust-embed = "8.4"
+# Web Dashboard & API (Axum 0.8.x + Tower 0.5.x)
+axum = "0.8"
+tokio-tungstenite = "0.26"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+rust-embed = "8.5"
 
-# Serialization & Data
+# Data & Serialization
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
+serde_yml = "0.0.12" # Corrected stable version for the fork
 serde_json = "1.0"
-dashmap = "6.0"
-uuid = { version = "1.8", features = ["v4", "serde"] }
+dashmap = "6.1"
+uuid = { version = "1.13", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-
-# Utilities
 anyhow = "1.0"
-thiserror = "1.0"
-rand = "0.8"
+thiserror = "2.0"
 url = "2.5"
+rand = "0.8"
 clap = { version = "4.5", features = ["derive"] }
 humantime = "2.1"
 
