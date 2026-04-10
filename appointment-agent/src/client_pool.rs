@@ -1,7 +1,7 @@
 /*
- * Version: 0.1.4
+ * Version: 0.1.5
  * Description: HTTP client pool with browser impersonation.
- * Updated for wreq 6.0.0-rc.25 API changes (.emulation method).
+ * Fixed: Removed invalid .cookie_store() call for wreq 6.x.
  */
 
 use anyhow::Result;
@@ -20,10 +20,9 @@ impl ClientPool {
     pub fn new() -> Result<Self> {
         // Build the primary client profile
         // Requirement 2.8: Use wreq with Chrome 124 fingerprinting.
-        // In wreq 6.x, impersonation is handled via .emulation() using wreq_util::Emulation.
+        // In wreq 6.x, cookies are typically handled automatically in the session or jar.
         let client = Client::builder()
             .emulation(Emulation::Chrome124)
-            .cookie_store(true)
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to build wreq client: {}", e))?;
